@@ -78,7 +78,7 @@ void show_menu(WINDOW *display, int row) {
   } else {
     mvwprintw(display, row++, 2, "b      : show in flat.");
   }
-  mvwprintw(display, row++, 2,   "c      : as %s",
+  mvwprintw(display, row++, 2,   "c      : show %s",
             kShowCount ? "percent" : "raw count");
 }
 
@@ -125,7 +125,6 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
     require_min_count =
       std::max(require_min_count,
                percentile_counter[percentile_counter.size() / 10]);
-    mvwprintw(display, 4, 1, "min-count: %d", require_min_count);
   }
   int total_scored = 0, total_in_tune = 0;
   for (int note = 0; note < sStatCounter.size(); ++note) {
@@ -239,13 +238,16 @@ void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
 
   mvwprintw(display, pitch_screen_pos_y, string_screen_pos_x,
             "      %-7s", note_name[s_key_display][note]);
-  if (cent < - kThreshold) {
-    mvwprintw(display, pitch_screen_pos_y - 1, string_screen_pos_x,
-              "      |      ");
+  const int bargraph_width = 13;
+  if (cent < -5) {
+    int bar_len = bargraph_width / 50.0 * -cent;
+    mvwchgat(display, pitch_screen_pos_y - 1,
+             string_screen_pos_x + bargraph_width - bar_len,
+             bar_len, 0, COL_WARN, NULL);
   }
-  else if (cent > kThreshold) {
-    mvwprintw(display, pitch_screen_pos_y + 1, string_screen_pos_x,
-              "      |      ");
+  else if (cent > 5) {
+    mvwchgat(display, pitch_screen_pos_y + 1, string_screen_pos_x,
+             bargraph_width / 50.0 * cent, 0, COL_WARN, NULL);
   }
   wrefresh(display);
 }
