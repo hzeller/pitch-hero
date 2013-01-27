@@ -23,6 +23,7 @@ enum {
   COL_OK,
   COL_WARN,
   COL_SELECT,
+  COL_HEADLINE,
 };
 
 enum KeyDisplay {
@@ -94,29 +95,32 @@ double GetTime() {
 }
 
 void show_menu(WINDOW *display, int row) {
-  mvwprintw(display, row++, 2,  "---- Shortcuts ----");
-  mvwprintw(display, row++, 2, " <space>: reset stats.");
+  int x = 0;
+  wcolor_set(display, COL_HEADLINE, NULL);
+  mvwprintw(display, row++, x,  " Shortcuts ");
+  wcolor_set(display, COL_NEUTRAL, NULL);
+  mvwprintw(display, row++, x, " <space>: reset stats.");
   if (s_key_display == DISPLAY_FLAT) {
-    mvwprintw(display, row++, 2, " # or s : show in sharp.");
+    mvwprintw(display, row++, x, " # or s : show in sharp.");
   } else {
-    mvwprintw(display, row++, 2, " b      : show in flat.");
+    mvwprintw(display, row++, x, " b      : show in flat.");
   }
-  mvwprintw(display, row++, 2,   " UP/DN  : threshold cent=%d",
+  mvwprintw(display, row++, x,   " UP/DN  : threshold cent=%d",
             cent_threshold);
 
   wcolor_set(display, paused ? COL_SELECT : COL_NEUTRAL, NULL);
-  mvwprintw(display, row++, 2,   " p      : %spause listen   ",
+  mvwprintw(display, row++, x,   " p      : %spause listen   ",
             paused ? "un-" : "");
   if (paused) {  // let's sneak in a little blinking pause symbol :)
     wattron(display, A_BLINK);
-    mvwprintw(display, row - 1, 6,   "||");
+    mvwprintw(display, row - 1, x + 4,   "||");
     wattroff(display, A_BLINK);
   }
   wcolor_set(display, kShowCount ? COL_SELECT : COL_NEUTRAL, NULL);
-  mvwprintw(display, row++, 2,   " c      : show %s",
+  mvwprintw(display, row++, x,   " c      : show %s",
             kShowCount ? "percent      " : "raw count");
   wcolor_set(display, COL_NEUTRAL, NULL);
-  mvwprintw(display, row++, 2, " q      : quit.");
+  mvwprintw(display, row++, x, " q      : quit.");
 }
 
 void print_strings(WINDOW *display,
@@ -136,6 +140,11 @@ void print_strings(WINDOW *display,
 
 void print_percent_per_cutoff(WINDOW *display, int x, int y, int min_count,
                               int bargraph_width) {
+  wcolor_set(display, COL_HEADLINE, NULL);
+  mvwprintw(display, y++, x, " Percentage in tune for      ");
+  mvwprintw(display, y++, x, " given acceptance threshold. ");
+  wcolor_set(display, COL_NEUTRAL, NULL);
+  x += 1;
   mvwprintw(display, y++, x, "Cent %%-in-tune");
   for (int threshold = 5; threshold <= 45; threshold += 5) {
     int total_scored = 0;
@@ -150,12 +159,12 @@ void print_percent_per_cutoff(WINDOW *display, int x, int y, int min_count,
     }
     if (total_scored == 0)
       continue;
-    wcolor_set(display, threshold == cent_threshold ? COL_SELECT : COL_NEUTRAL,
-               NULL);
+    const bool is_selected = threshold == cent_threshold;
+    wcolor_set(display, is_selected ? COL_SELECT : COL_NEUTRAL, NULL);
     const float fraction = 1.0 * total_in_tune / total_scored;
-    mvwprintw(display, y, x, "%4d %3.f%%%*s", threshold,
-              100.0 * fraction, bargraph_width - 4, "");
-    mvwchgat(display, y, x + 6, bargraph_width * fraction, 0, COL_OK, NULL);
+    mvwprintw(display, y, x, "%s%3d %3.f%%%*s", is_selected ? ">" : " ",
+              threshold, 100.0 * fraction, bargraph_width - 4, "");
+    mvwchgat(display, y, x + 5, bargraph_width * fraction, 0, COL_OK, NULL);
     ++y;
   }
   wcolor_set(display, COL_NEUTRAL, NULL);
@@ -190,7 +199,7 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
       std::max(require_min_count,
                percentile_counter[percentile_counter.size() / 10]);
   }
-  print_percent_per_cutoff(display, 2, 8, require_min_count, 19);
+  print_percent_per_cutoff(display, 0, 0, require_min_count, 19);
   int total_scored = 0, total_in_tune = 0;
   for (int note = 0; note < sStatCounter.size(); ++note) {
     StatCounter::Counter counter = sStatCounter.get_stat_for(note,
@@ -235,11 +244,6 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
       mvwchgat(display, pitch_screen_pos_y + 1, string_screen_pos_x + 3,
                bargraph_width / 100.0 * percent, 0, COL_WARN, NULL);
     }
-  }
-  if (total_scored > 0) {
-    mvwprintw(display, 1, 1, "Statistic. "
-              "Total %.1f%% in tune with +/- %d cent threshold.",
-              100.0 * total_in_tune / total_scored, cent_threshold);
   }
   show_menu(display, LINES - 13);
   wrefresh(display);
@@ -396,6 +400,7 @@ int main (int argc, char *argv[]) {
   init_pair(COL_OK, COLOR_BLACK, COLOR_GREEN);
   init_pair(COL_WARN, COLOR_BLACK, COLOR_RED);
   init_pair(COL_SELECT, COLOR_WHITE, COLOR_BLUE);
+  init_pair(COL_HEADLINE, COLOR_BLACK, COLOR_WHITE);
 
   const int kPitchDisplay = 3;
   WINDOW *flat_pitch = newwin(kPitchDisplay, COLS, 0, 0);
