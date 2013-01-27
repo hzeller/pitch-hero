@@ -1,4 +1,5 @@
-CFLAGS=-g -Wall
+CFLAGS=-g -Wall -O3
+CXXFLAGS=$(CFLAGS)
 OBJECTS=main.o dywapitchtrack.o
 LIBS=-lasound -lncurses
 

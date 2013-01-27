@@ -33,40 +33,50 @@ const char *note_name[2][12] = {
 class StatCounter {
 public:
   struct Counter {
+    Counter() : flat(0), ok(0), sharp(0) {}
     int flat;
     int ok;
     int sharp;
   };
   StatCounter(int max_note) : note_count_(max_note),
-                              counters_(new Counter [max_note]) {
+                              histogram_(new Histogram [max_note]) {
     Reset();
   }
-  ~StatCounter() { delete [] counters_; }
+  ~StatCounter() { delete [] histogram_; }
 
   void Reset() {
-    memset(counters_, 0, note_count_ * sizeof(Counter));
+    memset(histogram_, 0, note_count_ * sizeof(Histogram));
   }
-  void CountOk(int note) {
+  void Count(int note, int cent) {
     if (note < 0 || note >= note_count_) return;
-    ++counters_[note].ok;
+    int index = (cent + 50) / 5;
+    if (index > 19) index = 19;
+    ++histogram_[note].histogram[index];
   }
-  void CountFlat(int note) {
-    if (note < 0 || note >= note_count_) return;
-    ++counters_[note].flat;
-  }
-  void CountSharp(int note) {
-    if (note < 0 || note >= note_count_) return;
-    ++counters_[note].sharp;
-  }
+
   const int size() const { return note_count_; }
-  const Counter* get_stat_for(int note) const {
-    if (note < 0 || note >= note_count_) return NULL;
-    return &counters_[note];
+  Counter get_stat_for(int note, int threshold) const {
+    Counter result;
+    if (note < 0 || note >= note_count_) return result;
+    const Histogram &h = histogram_[note];
+    for (int i = 0; i < 10 - threshold / 5; ++i) {
+      result.flat += h.histogram[i];
+    }
+    for (int i = 10 - threshold / 5; i < 10 + threshold / 5; ++i) {
+      result.ok += h.histogram[i];
+    }
+    for (int i = 10 + threshold / 5; i < 20; ++i) {
+      result.sharp += h.histogram[i];
+    }
+    return result;
   }
 
 private:
+  struct Histogram {
+    int histogram[20];  // 0..9 (flat -49..0) 10..19 (sharp 0..49)
+  };
   const int note_count_;
-  Counter *const counters_;
+  Histogram *const histogram_;
 };
 static StatCounter sStatCounter(34);
 
@@ -118,9 +128,9 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   // that are contributing less than 5% or so
   std::vector<int> percentile_counter;
   for (int note = 0; note < sStatCounter.size(); ++note) {
-    const StatCounter::Counter *counter = sStatCounter.get_stat_for(note);
-    if (!counter) continue;
-    const int count = counter->flat + counter->ok + counter->sharp;
+    StatCounter::Counter counter = sStatCounter.get_stat_for(note,
+                                                             cent_threshold);
+    const int count = counter.flat + counter.ok + counter.sharp;
     if (!count) continue;
     percentile_counter.push_back(count);
   }
@@ -133,15 +143,15 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   }
   int total_scored = 0, total_in_tune = 0;
   for (int note = 0; note < sStatCounter.size(); ++note) {
-    const StatCounter::Counter *counter = sStatCounter.get_stat_for(note);
-    if (!counter) continue;
-    const int note_count = counter->flat + counter->ok + counter->sharp;
+    StatCounter::Counter counter = sStatCounter.get_stat_for(note,
+                                                             cent_threshold);
+    const int note_count = counter.flat + counter.ok + counter.sharp;
     if (note_count == 0)
       continue;
     if (note_count <= require_min_count && !kShowCount)
       continue;  // Don't show noise unless raw count is required.
     total_scored += note_count;
-    total_in_tune += counter->ok;
+    total_in_tune += counter.ok;
 
     // Each string covers 7 half-tones in 1st pos.
     const int cello_string = note / 7;
@@ -150,27 +160,27 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
     const int string_screen_pos_x = kStartX + kStringSpace * cello_string - 3;
     const int bargraph_width = 12;
     const char *display_note = note_name[s_key_display][(note + 3)% 12];
-    if (counter->flat) {
-      const int percent = 100 * counter->flat / note_count;
+    if (counter.flat) {
+      const int percent = 100 * counter.flat / note_count;
       mvwprintw(display, pitch_screen_pos_y - 1, string_screen_pos_x,
-                " ^ %3d%s", kShowCount ? counter->flat : percent,
+                " ^ %3d%s", kShowCount ? counter.flat : percent,
                 kShowCount ? "" : "%");
       mvwchgat(display, pitch_screen_pos_y - 1, string_screen_pos_x + 3,
                bargraph_width / 100.0 * percent, 0, COL_WARN, NULL);
     }
     {
-      const int percent = 100 * counter->ok / note_count;
+      const int percent = 100 * counter.ok / note_count;
       mvwprintw(display, pitch_screen_pos_y, string_screen_pos_x,
-                "%2s %3d%s", display_note, kShowCount ? counter->ok : percent,
+                "%2s %3d%s", display_note, kShowCount ? counter.ok : percent,
                 kShowCount ? "" : "%");
       mvwchgat(display, pitch_screen_pos_y, string_screen_pos_x + 3,
                bargraph_width / 100.0 * percent, 0, COL_OK, NULL);
     }
 
-    if (counter->sharp) {
-      const int percent = 100 * counter->sharp / note_count;
+    if (counter.sharp) {
+      const int percent = 100 * counter.sharp / note_count;
       mvwprintw(display, pitch_screen_pos_y + 1, string_screen_pos_x,
-                " v %3d%s", kShowCount ? counter->sharp : percent,
+                " v %3d%s", kShowCount ? counter.sharp : percent,
                 kShowCount ? "" : "%");
       mvwchgat(display, pitch_screen_pos_y + 1, string_screen_pos_x + 3,
                bargraph_width / 100.0 * percent, 0, COL_WARN, NULL);
@@ -178,7 +188,7 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   }
   if (total_scored > 0) {
     mvwprintw(display, 1, 1, "Statistic. "
-              "Total %.1f%% in tune with %d cent threshold.",
+              "Total %.1f%% in tune with +/- %d cent threshold.",
               100.0 * total_in_tune / total_scored, cent_threshold);
   }
   show_menu(display, LINES - 10);
@@ -220,18 +230,14 @@ void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   if (cent < - cent_threshold) {
     wbkgd(flat, COLOR_PAIR(COL_WARN));
     wbkgd(sharp, COLOR_PAIR(COL_NEUTRAL));
-    sStatCounter.CountFlat(scale_above_C);
     in_tune = false;
   }
   else if (cent > cent_threshold) {
     wbkgd(flat, COLOR_PAIR(COL_NEUTRAL));
     wbkgd(sharp, COLOR_PAIR(COL_WARN));
-    sStatCounter.CountSharp(scale_above_C);
     in_tune = false;
   }
-  else {
-    sStatCounter.CountOk(scale_above_C);
-  }
+  sStatCounter.Count(scale_above_C, cent);
   wrefresh(flat);
   wrefresh(sharp);
   // Each string covers 7 half-tones in 1st pos.
@@ -259,11 +265,8 @@ void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
 }
 
 static unsigned int kSampleRate = 44100;
-static int kBlock = 2048;
 int main (int argc, char *argv[]) {
-  int i;
   int err;
-  short buf[4096];
   snd_pcm_t *capture_handle = NULL;
   snd_pcm_hw_params_t *hw_params = NULL;
 
@@ -382,13 +385,26 @@ int main (int argc, char *argv[]) {
       double freq = dywapitch_computepitch(&tracker, analyze_buf);
       print_freq(freq, display, flat_pitch, sharp_pitch);
     }
+
     switch (wgetch(display)) {
-    case 'b': case 'B': s_key_display = DISPLAY_FLAT; break;
-    case '#': case 's': case 'S': s_key_display = DISPLAY_SHARP; break;
-    case ' ': sStatCounter.Reset(); break;
-    case 'c': kShowCount = !kShowCount; break;
-    case KEY_UP: if (cent_threshold < 40) cent_threshold += 5; break;
-    case KEY_DOWN: if (cent_threshold > 5) cent_threshold -= 5; break;
+    case 'b': case 'B':
+      s_key_display = DISPLAY_FLAT;
+      break;
+    case '#': case 's': case 'S':
+      s_key_display = DISPLAY_SHARP;
+      break;
+    case ' ':
+      sStatCounter.Reset();
+      break;
+    case 'c':
+      kShowCount = !kShowCount;
+      break;
+    case KEY_UP:
+      if (cent_threshold < 45) cent_threshold += 5;
+      break;
+    case KEY_DOWN:
+      if (cent_threshold > 5) cent_threshold -= 5;
+      break;
     }
   }
 	
