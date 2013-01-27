@@ -1,15 +1,17 @@
+// First hack. Get rid of global variables and stuff.
 #include <ncurses.h>
 
-#include <vector>
-#include <algorithm>
-#include <stdio.h>
-#include <stdlib.h>
 #include <alsa/asoundlib.h>
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <algorithm>
+#include <vector>
 
 #include "dywapitchtrack.h"
 
-const int kThreshold = 20;
+int cent_threshold = 20;
 
 enum {
   COL_NEUTRAL,
@@ -78,6 +80,9 @@ void show_menu(WINDOW *display, int row) {
   } else {
     mvwprintw(display, row++, 2, "b      : show in flat.");
   }
+  mvwprintw(display, row++, 2,   "UP/DN  : Adjust tune cent=%d",
+            cent_threshold);
+
   mvwprintw(display, row++, 2,   "c      : show %s",
             kShowCount ? "percent" : "raw count");
 }
@@ -98,7 +103,7 @@ void print_strings(WINDOW *display,
 }
 
 void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
-  int kStartX = 30;
+  int kStartX = 33;
   int kStartY = 3;
   int kStringSpace = 16;
   int kHalftoneSpace = 4;
@@ -172,15 +177,16 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
     }
   }
   if (total_scored > 0) {
-    mvwprintw(display, 1, 1, "Statistic. Total %.1f%% in tune.",
-              100.0 * total_in_tune / total_scored);
+    mvwprintw(display, 1, 1, "Statistic. "
+              "Total %.1f%% in tune with %d cent threshold.",
+              100.0 * total_in_tune / total_scored, cent_threshold);
   }
   show_menu(display, LINES - 10);
   wrefresh(display);
 }
 
 void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
-  int kStartX = 30;
+  int kStartX = 33;
   int kStartY = 3;
   int kStringSpace = 16;
   int kHalftoneSpace = 4;
@@ -211,13 +217,13 @@ void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   int note = rounded % 12;   // rounded can be 12.
 
   bool in_tune = true;
-  if (cent < - kThreshold) {
+  if (cent < - cent_threshold) {
     wbkgd(flat, COLOR_PAIR(COL_WARN));
     wbkgd(sharp, COLOR_PAIR(COL_NEUTRAL));
     sStatCounter.CountFlat(scale_above_C);
     in_tune = false;
   }
-  else if (cent > kThreshold) {
+  else if (cent > cent_threshold) {
     wbkgd(flat, COLOR_PAIR(COL_NEUTRAL));
     wbkgd(sharp, COLOR_PAIR(COL_WARN));
     sStatCounter.CountSharp(scale_above_C);
@@ -344,7 +350,8 @@ int main (int argc, char *argv[]) {
                                       LINES - kPitchDisplay, 0);
   WINDOW *display = newwin(LINES - 2 * kPitchDisplay, COLS,
                            kPitchDisplay, 0);
-  nodelay(display, true);
+  nodelay(display, true);   // don't block for keypresses
+  keypad(display, TRUE);   // make complex keys such as cursor work.
 
   const int sample_count = 2 * dywapitch_neededsamplecount(60);
   fprintf(stderr, "Using %d samples.\n", sample_count);
@@ -380,6 +387,8 @@ int main (int argc, char *argv[]) {
     case '#': case 's': case 'S': s_key_display = DISPLAY_SHARP; break;
     case ' ': sStatCounter.Reset(); break;
     case 'c': kShowCount = !kShowCount; break;
+    case KEY_UP: if (cent_threshold < 40) cent_threshold += 5; break;
+    case KEY_DOWN: if (cent_threshold > 5) cent_threshold -= 5; break;
     }
   }
 	
