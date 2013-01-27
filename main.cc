@@ -5,19 +5,22 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
 #include <algorithm>
 #include <vector>
 
+
 #include "dywapitchtrack.h"
 
 int cent_threshold = 20;
+bool paused = false;
 
 enum {
   COL_NEUTRAL,
   COL_OK,
   COL_WARN,
-  COL_NOTE,
+  COL_SELECT,
 };
 
 enum KeyDisplay {
@@ -82,19 +85,30 @@ static StatCounter sStatCounter(34);
 
 bool kShowCount = false;   // useful for debugging.
 
+double GetTime() {
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return tv.tv_sec + tv.tv_usec / 1e6;
+}
+
 void show_menu(WINDOW *display, int row) {
   mvwprintw(display, row++, 2,  "---- Shortcuts ----");
-  mvwprintw(display, row++, 2, "<space>: reset stats.");
+  mvwprintw(display, row++, 2, " <space>: reset stats.");
   if (s_key_display == DISPLAY_FLAT) {
-    mvwprintw(display, row++, 2, "# or s : show in sharp.");
+    mvwprintw(display, row++, 2, " # or s : show in sharp.");
   } else {
-    mvwprintw(display, row++, 2, "b      : show in flat.");
+    mvwprintw(display, row++, 2, " b      : show in flat.");
   }
-  mvwprintw(display, row++, 2,   "UP/DN  : Adjust tune cent=%d",
+  mvwprintw(display, row++, 2,   " UP/DN  : threshold cent=%d",
             cent_threshold);
 
-  mvwprintw(display, row++, 2,   "c      : show %s",
-            kShowCount ? "percent" : "raw count");
+  wcolor_set(display, paused ? COL_SELECT : COL_NEUTRAL, NULL);
+  mvwprintw(display, row++, 2,   " p      : %spause listen    ",
+            paused ? "un" : "");
+  wcolor_set(display, kShowCount ? COL_SELECT : COL_NEUTRAL, NULL);
+  mvwprintw(display, row++, 2,   " c      : show %s",
+            kShowCount ? "percent      " : "raw count");
+  wcolor_set(display, COL_NEUTRAL, NULL);
 }
 
 void print_strings(WINDOW *display,
@@ -110,6 +124,29 @@ void print_strings(WINDOW *display,
                 y % halftone_space == 0 ? "+" : "|");
     }
   }
+}
+
+void print_percent_per_cutoff(WINDOW *display, int x, int y, int min_count) {
+  mvwprintw(display, y++, x, "Cent %%-in-tune");
+  for (int threshold = 5; threshold <= 45; threshold += 5) {
+    int total_scored = 0;
+    int total_in_tune = 0;
+    for (int note = 0; note < sStatCounter.size(); ++note) {
+      StatCounter::Counter counter = sStatCounter.get_stat_for(note, threshold);
+      const int note_count = counter.flat + counter.ok + counter.sharp;
+      if (note_count == 0 || note_count <= min_count)
+        continue;
+      total_scored += note_count;
+      total_in_tune += counter.ok;
+    }
+    if (total_scored == 0)
+      continue;
+    wcolor_set(display, threshold == cent_threshold ? COL_SELECT : COL_NEUTRAL,
+               NULL);
+    mvwprintw(display, y++, x, "%4d %3.f%%", threshold,
+              100.0 * total_in_tune / total_scored);
+  }
+  wcolor_set(display, COL_NEUTRAL, NULL);
 }
 
 void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
@@ -141,6 +178,7 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
       std::max(require_min_count,
                percentile_counter[percentile_counter.size() / 10]);
   }
+  print_percent_per_cutoff(display, 2, 8, require_min_count);
   int total_scored = 0, total_in_tune = 0;
   for (int note = 0; note < sStatCounter.size(); ++note) {
     StatCounter::Counter counter = sStatCounter.get_stat_for(note,
@@ -191,7 +229,7 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
               "Total %.1f%% in tune with +/- %d cent threshold.",
               100.0 * total_in_tune / total_scored, cent_threshold);
   }
-  show_menu(display, LINES - 10);
+  show_menu(display, LINES - 12);
   wrefresh(display);
 }
 
@@ -345,7 +383,7 @@ int main (int argc, char *argv[]) {
   init_pair(COL_NEUTRAL, COLOR_WHITE, COLOR_BLACK);
   init_pair(COL_OK, COLOR_BLACK, COLOR_GREEN);
   init_pair(COL_WARN, COLOR_BLACK, COLOR_RED);
-  init_pair(COL_NOTE, COLOR_BLACK, COLOR_YELLOW);
+  init_pair(COL_SELECT, COLOR_WHITE, COLOR_BLUE);
 
   const int kPitchDisplay = 3;
   WINDOW *flat_pitch = newwin(kPitchDisplay, COLS, 0, 0);
@@ -363,6 +401,8 @@ int main (int argc, char *argv[]) {
   int small_sample = sample_count / 16;
   short *read_buf = new short [ small_sample ];
   double *analyze_buf = new double [ sample_count ];
+  bool any_change = true;
+  double last_keypress_time = -1;
   for (;;) {
     if ((err = snd_pcm_readi (capture_handle, read_buf,
                               small_sample)) != small_sample) {
@@ -379,13 +419,11 @@ int main (int argc, char *argv[]) {
         max_val = abs(read_buf[i]);
       analyze_buf[tail_buffer + i] = read_buf[i] / 32768.0;
     }
-    if (max_val < 2000) {
-      print_stats(display, flat_pitch, sharp_pitch);
-    } else {
-      double freq = dywapitch_computepitch(&tracker, analyze_buf);
-      print_freq(freq, display, flat_pitch, sharp_pitch);
-    }
 
+    // Now, let's first check for keypresses that happened in the meantime.
+    // The do create some keyboard noise, so if we detect one, then we will
+    // not count this sample.
+    bool key_pressed = true;
     switch (wgetch(display)) {
     case 'b': case 'B':
       s_key_display = DISPLAY_FLAT;
@@ -399,12 +437,36 @@ int main (int argc, char *argv[]) {
     case 'c':
       kShowCount = !kShowCount;
       break;
-    case KEY_UP:
-      if (cent_threshold < 45) cent_threshold += 5;
+    case 'p':
+      paused = !paused;
       break;
     case KEY_DOWN:
+      if (cent_threshold < 45) cent_threshold += 5;
+      break;
+    case KEY_UP:
       if (cent_threshold > 5) cent_threshold -= 5;
       break;
+    case ERR:
+      key_pressed = false;
+      break;
+    }
+    if (key_pressed) {
+      last_keypress_time = GetTime();
+      any_change = true;
+    }
+
+    // No value 'heard', show statistics. Also, if we just pressed a key,
+    // that might have created some noise we picked up; ignore that.
+    if (paused || max_val < 2000 ||
+        (last_keypress_time > 0 && last_keypress_time + 0.5 > GetTime())) {
+      if (any_change) {
+        print_stats(display, flat_pitch, sharp_pitch);
+      }
+      any_change = false;
+    } else {
+      double freq = dywapitch_computepitch(&tracker, analyze_buf);
+      print_freq(freq, display, flat_pitch, sharp_pitch);
+      any_change = true;
     }
   }
 	
