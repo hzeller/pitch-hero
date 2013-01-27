@@ -13,6 +13,8 @@
 
 #include "dywapitchtrack.h"
 
+static const int kMaxNotesAboveC = 35;
+
 int cent_threshold = 20;
 bool paused = false;
 
@@ -81,7 +83,7 @@ private:
   const int note_count_;
   Histogram *const histogram_;
 };
-static StatCounter sStatCounter(34);
+static StatCounter sStatCounter(kMaxNotesAboveC);
 
 bool kShowCount = false;   // useful for debugging.
 
@@ -103,12 +105,13 @@ void show_menu(WINDOW *display, int row) {
             cent_threshold);
 
   wcolor_set(display, paused ? COL_SELECT : COL_NEUTRAL, NULL);
-  mvwprintw(display, row++, 2,   " p      : %spause listen    ",
-            paused ? "un" : "");
+  mvwprintw(display, row++, 2,   " p      : %spause listen   ",
+            paused ? "un-" : "");
   wcolor_set(display, kShowCount ? COL_SELECT : COL_NEUTRAL, NULL);
   mvwprintw(display, row++, 2,   " c      : show %s",
             kShowCount ? "percent      " : "raw count");
   wcolor_set(display, COL_NEUTRAL, NULL);
+  mvwprintw(display, row++, 2, " q      : quit.");
 }
 
 void print_strings(WINDOW *display,
@@ -143,7 +146,7 @@ void print_percent_per_cutoff(WINDOW *display, int x, int y, int min_count) {
       continue;
     wcolor_set(display, threshold == cent_threshold ? COL_SELECT : COL_NEUTRAL,
                NULL);
-    mvwprintw(display, y++, x, "%4d %3.f%%", threshold,
+    mvwprintw(display, y++, x, "%4d %3.f%%     ", threshold,
               100.0 * total_in_tune / total_scored);
   }
   wcolor_set(display, COL_NEUTRAL, NULL);
@@ -229,7 +232,7 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
               "Total %.1f%% in tune with +/- %d cent threshold.",
               100.0 * total_in_tune / total_scored, cent_threshold);
   }
-  show_menu(display, LINES - 12);
+  show_menu(display, LINES - 13);
   wrefresh(display);
 }
 
@@ -246,7 +249,7 @@ void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   werase(sharp);
   print_strings(display, kStartX, kStartY, kStringSpace, kHalftoneSpace);
   wrefresh(display);
-  if (f < 64 || f > 880) {
+  if (f < 64 || f > 650) {
     wrefresh(display);
     wrefresh(flat);
     wrefresh(sharp);    
@@ -403,7 +406,8 @@ int main (int argc, char *argv[]) {
   double *analyze_buf = new double [ sample_count ];
   bool any_change = true;
   double last_keypress_time = -1;
-  for (;;) {
+  bool do_exit = false;
+  while (!do_exit) {
     if ((err = snd_pcm_readi (capture_handle, read_buf,
                               small_sample)) != small_sample) {
       fprintf (stderr, "read from audio interface failed (%s)\n",
@@ -446,6 +450,9 @@ int main (int argc, char *argv[]) {
     case KEY_UP:
       if (cent_threshold > 5) cent_threshold -= 5;
       break;
+    case 'q':
+      do_exit = true;
+      break;
     case ERR:
       key_pressed = false;
       break;
@@ -470,6 +477,7 @@ int main (int argc, char *argv[]) {
     }
   }
 	
+  endwin();
   snd_pcm_close(capture_handle);
   return 0;
 }
