@@ -107,6 +107,11 @@ void show_menu(WINDOW *display, int row) {
   wcolor_set(display, paused ? COL_SELECT : COL_NEUTRAL, NULL);
   mvwprintw(display, row++, 2,   " p      : %spause listen   ",
             paused ? "un-" : "");
+  if (paused) {  // let's sneak in a little blinking pause symbol :)
+    wattron(display, A_BLINK);
+    mvwprintw(display, row - 1, 6,   "||");
+    wattroff(display, A_BLINK);
+  }
   wcolor_set(display, kShowCount ? COL_SELECT : COL_NEUTRAL, NULL);
   mvwprintw(display, row++, 2,   " c      : show %s",
             kShowCount ? "percent      " : "raw count");
@@ -129,7 +134,8 @@ void print_strings(WINDOW *display,
   }
 }
 
-void print_percent_per_cutoff(WINDOW *display, int x, int y, int min_count) {
+void print_percent_per_cutoff(WINDOW *display, int x, int y, int min_count,
+                              int bargraph_width) {
   mvwprintw(display, y++, x, "Cent %%-in-tune");
   for (int threshold = 5; threshold <= 45; threshold += 5) {
     int total_scored = 0;
@@ -146,8 +152,11 @@ void print_percent_per_cutoff(WINDOW *display, int x, int y, int min_count) {
       continue;
     wcolor_set(display, threshold == cent_threshold ? COL_SELECT : COL_NEUTRAL,
                NULL);
-    mvwprintw(display, y++, x, "%4d %3.f%%     ", threshold,
-              100.0 * total_in_tune / total_scored);
+    const float fraction = 1.0 * total_in_tune / total_scored;
+    mvwprintw(display, y, x, "%4d %3.f%%%*s", threshold,
+              100.0 * fraction, bargraph_width - 4, "");
+    mvwchgat(display, y, x + 6, bargraph_width * fraction, 0, COL_OK, NULL);
+    ++y;
   }
   wcolor_set(display, COL_NEUTRAL, NULL);
 }
@@ -181,7 +190,7 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
       std::max(require_min_count,
                percentile_counter[percentile_counter.size() / 10]);
   }
-  print_percent_per_cutoff(display, 2, 8, require_min_count);
+  print_percent_per_cutoff(display, 2, 8, require_min_count, 19);
   int total_scored = 0, total_in_tune = 0;
   for (int note = 0; note < sStatCounter.size(); ++note) {
     StatCounter::Counter counter = sStatCounter.get_stat_for(note,
