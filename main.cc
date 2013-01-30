@@ -293,7 +293,8 @@ static void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   wrefresh(display);
 }
 
-static void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
+static void print_freq(double f, int max_value,
+                       WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   int kStartX = 33;
   int kStartY = 3;
   wbkgd(display, COLOR_PAIR(COL_NEUTRAL));
@@ -305,6 +306,18 @@ static void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
 
   StringBoard board(display, kStartX, kStartY);
   board.PrintStringBoard();
+
+  if (max_value > 0) {
+    const float vu_db = 20 * (log(max_value / 32768.0) / log(10));
+    // everything above -20 db we show
+    const float kMinDB = -20;
+    const int kVUWidth = 16;
+    if (vu_db > kMinDB) {
+      int vu_bar = kVUWidth * (vu_db - kMinDB) / -kMinDB;
+      mvwchgat(display, 0, 1, vu_bar, 0, COL_OK, NULL);
+    }
+  }
+
   if (f < 64 || f > 650) {
     wrefresh(display);
     wrefresh(flat);
@@ -338,7 +351,7 @@ static void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   wrefresh(flat);
   wrefresh(sharp);
 
-  mvwprintw(display, 0, 0, "%4.1fHz", f);
+  //mvwprintw(display, 1, 0, "%4.1fHz", f);
 
   // Each string covers 7 half-tones in 1st pos.
   const int cello_string = scale_above_C / 7;
@@ -516,7 +529,7 @@ int main (int argc, char *argv[]) {
       any_change = false;
     } else {
       double freq = dywapitch_computepitch(&tracker, analyze_buf);
-      print_freq(freq, display, flat_pitch, sharp_pitch);
+      print_freq(freq, max_val, display, flat_pitch, sharp_pitch);
       any_change = true;
     }
   }
