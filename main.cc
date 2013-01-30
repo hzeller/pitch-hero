@@ -56,8 +56,8 @@ public:
     }
   }
 
-  void PrintNote(const char *name, int str, int position, float cent,
-                 bool in_tune) {
+  void PrintNote(const char *name, int str, int position, bool in_tune,
+                 float cent) {
     wcolor_set(display_, in_tune ? COL_OK : COL_WARN, NULL);
     const int pitch_screen_pos_y = origin_y_ + kHalftoneSpace * position;
     const int string_screen_pos_x = origin_x_ + kStringSpace * str - 6;
