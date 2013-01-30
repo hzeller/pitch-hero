@@ -24,6 +24,7 @@ enum {
   COL_WARN,
   COL_SELECT,
   COL_HEADLINE,
+  COL_VU_METER,
 };
 
 enum KeyDisplay {
@@ -312,9 +313,10 @@ static void print_freq(double f, int max_value,
     // everything above -20 db we show
     const float kMinDB = -20;
     const int kVUWidth = 16;
+    mvwprintw(display, 0, 1, "[%*s]", kVUWidth, "");
     if (vu_db > kMinDB) {
       int vu_bar = kVUWidth * (vu_db - kMinDB) / -kMinDB;
-      mvwchgat(display, 0, 1, vu_bar, 0, COL_OK, NULL);
+      mvwchgat(display, 0, 1, vu_bar, 0, COL_VU_METER, NULL);
     }
   }
 
@@ -443,6 +445,7 @@ int main (int argc, char *argv[]) {
   init_pair(COL_OK, COLOR_BLACK, COLOR_GREEN);
   init_pair(COL_WARN, COLOR_BLACK, COLOR_RED);
   init_pair(COL_SELECT, COLOR_WHITE, COLOR_BLUE);
+  init_pair(COL_VU_METER, COLOR_WHITE, COLOR_BLUE);
   init_pair(COL_HEADLINE, COLOR_BLACK, COLOR_WHITE);
 
   const int kPitchDisplay = 3;
