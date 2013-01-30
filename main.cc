@@ -36,6 +36,91 @@ const char *note_name[2][12] = {
   { "A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#" },
 };
 
+class StringBoard {
+public:
+  StringBoard(WINDOW *display, int x, int y)
+    : kStrings(4), kStringSpace(16), kHalftoneSpace(4), // constants for now.
+      display_(display), origin_x_(x), origin_y_(y) {
+  }
+  
+  void PrintStringBoard() {
+    for (int x = 0; x < (kStrings - 1) * kStringSpace; ++x) {
+      mvwprintw(display_, origin_y_, origin_x_ + x, "-");
+    }
+    for (int s = 0; s < kStrings; ++s) {
+      for (int y = 0; y < 7 * kHalftoneSpace; ++y) {
+        mvwprintw(display_, origin_y_ + y, origin_x_ + kStringSpace * s,
+                  y % kHalftoneSpace == 0 ? "+" : "|");
+      }
+    }
+  }
+
+  void PrintNote(const char *name, int str, int position, float cent,
+                 bool in_tune) {
+    wcolor_set(display_, in_tune ? COL_OK : COL_WARN, NULL);
+    const int pitch_screen_pos_y = origin_y_ + kHalftoneSpace * position;
+    const int string_screen_pos_x = origin_x_ + kStringSpace * str - 6;
+    
+    mvwprintw(display_, pitch_screen_pos_y, string_screen_pos_x,
+              "      %-7s", name);
+    const int bargraph_width = 13;
+    if (cent < -5) {
+      int bar_len = bargraph_width / 50.0 * -cent;
+      mvwchgat(display_, pitch_screen_pos_y - 1,
+               string_screen_pos_x + bargraph_width - bar_len,
+               bar_len, 0, COL_WARN, NULL);
+    }
+    else if (cent > 5) {
+      mvwchgat(display_, pitch_screen_pos_y + 1, string_screen_pos_x,
+               bargraph_width / 50.0 * cent, 0, COL_WARN, NULL);
+    }
+  }
+
+  void PrintBargraph(const char *note_name, int str, int position,
+                     int show_count,
+                     int count_flat, int count_in_tune, int count_sharp) {
+    const int sum = count_flat + count_in_tune + count_sharp;
+    if (sum == 0)
+      return;
+    const int pitch_screen_pos_y = origin_y_ + kHalftoneSpace * position;
+    const int string_screen_pos_x = origin_x_ + kStringSpace * str - 3;
+    const int bargraph_width = 12;
+    if (count_flat) {
+      const int percent = 100 * count_flat / sum;
+      mvwprintw(display_, pitch_screen_pos_y - 1, string_screen_pos_x,
+                " ^ %3d%s", show_count ? count_flat : percent,
+                show_count ? "" : "%");
+      mvwchgat(display_, pitch_screen_pos_y - 1, string_screen_pos_x + 3,
+               bargraph_width / 100.0 * percent, 0, COL_WARN, NULL);
+    }
+    {
+      const int percent = 100 * count_in_tune / sum;
+      mvwprintw(display_, pitch_screen_pos_y, string_screen_pos_x,
+                "%2s %3d%s", note_name, show_count ? count_in_tune : percent,
+                show_count ? "" : "%");
+      mvwchgat(display_, pitch_screen_pos_y, string_screen_pos_x + 3,
+               bargraph_width / 100.0 * percent, 0, COL_OK, NULL);
+    } 
+    if (count_sharp) {
+      const int percent = 100 * count_sharp / sum;
+      mvwprintw(display_, pitch_screen_pos_y + 1, string_screen_pos_x,
+                " v %3d%s", show_count ? count_sharp : percent,
+                show_count ? "" : "%");
+      mvwchgat(display_, pitch_screen_pos_y + 1, string_screen_pos_x + 3,
+               bargraph_width / 100.0 * percent, 0, COL_WARN, NULL);
+    }
+  }
+
+private:
+  const int kStrings;
+  const int kStringSpace;
+  const int kHalftoneSpace;
+  
+  WINDOW *const display_;
+  const int origin_x_;
+  const int origin_y_;
+};
+
 class StatCounter {
 public:
   struct Counter {
@@ -88,13 +173,13 @@ static StatCounter sStatCounter(kMaxNotesAboveC);
 
 bool kShowCount = false;   // useful for debugging.
 
-double GetTime() {
+static double GetTime() {
   struct timeval tv;
   gettimeofday(&tv, NULL);
   return tv.tv_sec + tv.tv_usec / 1e6;
 }
 
-void show_menu(WINDOW *display, int row) {
+static void show_menu(WINDOW *display, int row) {
   int x = 0;
   wcolor_set(display, COL_HEADLINE, NULL);
   mvwprintw(display, row++, x,  " Shortcuts ");
@@ -123,23 +208,8 @@ void show_menu(WINDOW *display, int row) {
   mvwprintw(display, row++, x, " q      : quit.");
 }
 
-void print_strings(WINDOW *display,
-                   int start_x, int start_y,
-                   int string_space, int halftone_space) {
-  const int kStrings = 4;
-  for (int x = 0; x < (kStrings - 1) * string_space; ++x) {
-    mvwprintw(display, start_y, start_x + x, "-");
-  }
-  for (int s = 0; s < kStrings; ++s) {
-    for (int y = 0; y < 7 * halftone_space; ++y) {
-      mvwprintw(display, start_y + y, start_x + string_space * s,
-                y % halftone_space == 0 ? "+" : "|");
-    }
-  }
-}
-
-void print_percent_per_cutoff(WINDOW *display, int x, int y, int min_count,
-                              int bargraph_width) {
+static void print_percent_per_cutoff(WINDOW *display, int x, int y,
+                                     int min_count, int bargraph_width) {
   wcolor_set(display, COL_HEADLINE, NULL);
   mvwprintw(display, y++, x, " Percentage in tune for      ");
   mvwprintw(display, y++, x, " given acceptance threshold. ");
@@ -170,18 +240,14 @@ void print_percent_per_cutoff(WINDOW *display, int x, int y, int min_count,
   wcolor_set(display, COL_NEUTRAL, NULL);
 }
 
-void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
+static void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   int kStartX = 33;
   int kStartY = 3;
-  int kStringSpace = 16;
-  int kHalftoneSpace = 4;
   wbkgd(display, COLOR_PAIR(COL_NEUTRAL));
   wbkgd(flat, COLOR_PAIR(COL_NEUTRAL));
   wbkgd(sharp, COLOR_PAIR(COL_NEUTRAL));
   werase(flat); wrefresh(flat);
   werase(sharp); wrefresh(sharp);
-  werase(display);
-  print_strings(display, kStartX, kStartY, kStringSpace, kHalftoneSpace);
   // Let's first see how many counts we have, so that we can discard notes
   // that are contributing less than 5% or so
   std::vector<int> percentile_counter;
@@ -199,8 +265,12 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
       std::max(require_min_count,
                percentile_counter[percentile_counter.size() / 10]);
   }
-  print_percent_per_cutoff(display, 0, 0, require_min_count, 19);
+  werase(display);
   int total_scored = 0, total_in_tune = 0;
+  StringBoard board(display, kStartX, kStartY);
+  board.PrintStringBoard();
+  print_percent_per_cutoff(display, 0, 0, require_min_count, 19);
+
   for (int note = 0; note < sStatCounter.size(); ++note) {
     StatCounter::Counter counter = sStatCounter.get_stat_for(note,
                                                              cent_threshold);
@@ -212,56 +282,29 @@ void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
     total_scored += note_count;
     total_in_tune += counter.ok;
 
-    // Each string covers 7 half-tones in 1st pos.
     const int cello_string = note / 7;
     const int pitch_pos = note % 7;
-    const int pitch_screen_pos_y = kStartY + kHalftoneSpace * pitch_pos;
-    const int string_screen_pos_x = kStartX + kStringSpace * cello_string - 3;
-    const int bargraph_width = 12;
-    const char *display_note = note_name[s_key_display][(note + 3)% 12];
-    if (counter.flat) {
-      const int percent = 100 * counter.flat / note_count;
-      mvwprintw(display, pitch_screen_pos_y - 1, string_screen_pos_x,
-                " ^ %3d%s", kShowCount ? counter.flat : percent,
-                kShowCount ? "" : "%");
-      mvwchgat(display, pitch_screen_pos_y - 1, string_screen_pos_x + 3,
-               bargraph_width / 100.0 * percent, 0, COL_WARN, NULL);
-    }
-    {
-      const int percent = 100 * counter.ok / note_count;
-      mvwprintw(display, pitch_screen_pos_y, string_screen_pos_x,
-                "%2s %3d%s", display_note, kShowCount ? counter.ok : percent,
-                kShowCount ? "" : "%");
-      mvwchgat(display, pitch_screen_pos_y, string_screen_pos_x + 3,
-               bargraph_width / 100.0 * percent, 0, COL_OK, NULL);
-    }
-
-    if (counter.sharp) {
-      const int percent = 100 * counter.sharp / note_count;
-      mvwprintw(display, pitch_screen_pos_y + 1, string_screen_pos_x,
-                " v %3d%s", kShowCount ? counter.sharp : percent,
-                kShowCount ? "" : "%");
-      mvwchgat(display, pitch_screen_pos_y + 1, string_screen_pos_x + 3,
-               bargraph_width / 100.0 * percent, 0, COL_WARN, NULL);
-    }
+    board.PrintBargraph(note_name[s_key_display][(note + 3)% 12],
+                        cello_string, pitch_pos, kShowCount,
+                        counter.flat, counter.ok, counter.sharp);
   }
+
   show_menu(display, LINES - 13);
   wrefresh(display);
 }
 
-void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
+static void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   int kStartX = 33;
   int kStartY = 3;
-  int kStringSpace = 16;
-  int kHalftoneSpace = 4;
   wbkgd(display, COLOR_PAIR(COL_NEUTRAL));
   wbkgd(flat, COLOR_PAIR(COL_NEUTRAL));
   wbkgd(sharp, COLOR_PAIR(COL_NEUTRAL));
   werase(display);
   werase(flat);
   werase(sharp);
-  print_strings(display, kStartX, kStartY, kStringSpace, kHalftoneSpace);
-  wrefresh(display);
+
+  StringBoard board(display, kStartX, kStartY);
+  board.PrintStringBoard();
   if (f < 64 || f > 650) {
     wrefresh(display);
     wrefresh(flat);
@@ -294,27 +337,14 @@ void print_freq(double f, WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   sStatCounter.Count(scale_above_C, cent);
   wrefresh(flat);
   wrefresh(sharp);
+
+  mvwprintw(display, 0, 0, "%4.1fHz", f);
+
   // Each string covers 7 half-tones in 1st pos.
   const int cello_string = scale_above_C / 7;
   const int pitch_pos = scale_above_C % 7;
-  mvwprintw(display, 0, 0, "%4.1fHz", f);
-  wcolor_set(display, in_tune ? COL_OK : COL_WARN, NULL);
-  const int pitch_screen_pos_y = kStartY + kHalftoneSpace * pitch_pos;
-  const int string_screen_pos_x = kStartX + kStringSpace * cello_string - 6;
-
-  mvwprintw(display, pitch_screen_pos_y, string_screen_pos_x,
-            "      %-7s", note_name[s_key_display][note]);
-  const int bargraph_width = 13;
-  if (cent < -5) {
-    int bar_len = bargraph_width / 50.0 * -cent;
-    mvwchgat(display, pitch_screen_pos_y - 1,
-             string_screen_pos_x + bargraph_width - bar_len,
-             bar_len, 0, COL_WARN, NULL);
-  }
-  else if (cent > 5) {
-    mvwchgat(display, pitch_screen_pos_y + 1, string_screen_pos_x,
-             bargraph_width / 50.0 * cent, 0, COL_WARN, NULL);
-  }
+  board.PrintNote(note_name[s_key_display][note], cello_string, pitch_pos,
+                  in_tune, cent);
   wrefresh(display);
 }
 
