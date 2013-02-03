@@ -320,12 +320,9 @@ static void print_freq(double f, int max_value,
     }
   }
 
-  if (f < 64 || f > 650) {
-    wrefresh(display);
-    wrefresh(flat);
-    wrefresh(sharp);    
-    return;
-  }
+  if (f == 0.0)
+    return;   // nothing detected.
+
   static const double base = 55.0;  // 440 / 2 / 2 = low A
   static const double d = exp(log(2) / 1200);
   const double cent_above_base = log(f / base) / log(d);
@@ -337,6 +334,20 @@ static void print_freq(double f, int max_value,
   int rounded = round(scale);
   double cent = 100 * (scale - rounded);
   int note = rounded % 12;   // rounded can be 12.
+
+  if (f < 100) {
+    mvwprintw(display, 1, 1, "%5.1fHz %s", f, note_name[s_key_display][note]);
+  } else {
+    mvwprintw(display, 1, 1, "%4.0f Hz %s", f, note_name[s_key_display][note]);
+  }
+
+  // We're not showing anything outside of our range.
+  if (f < 64 || f > 650) {
+    wrefresh(display);
+    wrefresh(flat);
+    wrefresh(sharp);    
+    return;
+  }
 
   bool in_tune = true;
   if (cent < - cent_threshold) {
@@ -352,8 +363,6 @@ static void print_freq(double f, int max_value,
   sStatCounter.Count(scale_above_C, cent);
   wrefresh(flat);
   wrefresh(sharp);
-
-  //mvwprintw(display, 1, 0, "%4.1fHz", f);
 
   // Each string covers 7 half-tones in 1st pos.
   const int cello_string = scale_above_C / 7;

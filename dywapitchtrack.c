@@ -331,6 +331,7 @@ double _dywapitch_computeWaveletPitch(struct _dywapitchtracker *t, double *sam) 
 It states: 
  - a pitch cannot change much all of a sudden (20%) (impossible humanly,
  so if such a situation happens, consider that it is a mistake and drop it. 
+  (for music, it is quite common to have higher steps. allow for more)
  - a pitch cannot double or be divided by 2 all of a sudden : it is an
  algorithm side-effect : divide it or double it by 2. 
  - a lonely voiced pitch cannot happen, nor can a sudden drop in the middle
@@ -344,7 +345,7 @@ double _dywapitch_dynamicprocess(dywapitchtracker *pitchtracker, double pitch) {
 	
 	//
 	double estimatedPitch = -1;
-	double acceptedError = 0.2f;
+	double acceptedError = 0.4f;   // used to be 0.2
 	int maxConfidence = 5;
 	
 	if (pitch != -1) {
