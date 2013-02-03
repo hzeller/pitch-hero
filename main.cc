@@ -1,4 +1,5 @@
-// First hack. Get rid of global variables and stuff.
+// First hack. Mostly experimental.
+// TODO: Get rid of global variables and stuff.
 #include <ncurses.h>
 
 #include <alsa/asoundlib.h>
@@ -10,10 +11,13 @@
 #include <algorithm>
 #include <vector>
 
-
 #include "dywapitchtrack.h"
 
+static const int kSeizureMode = false;   // :) show when we're off
 static const int kMaxNotesAboveC = 35;
+
+static int kStringSpace = 16;   // horizontal space between strings
+static int kHalftoneSpace = 4;  // vertical space between halftones
 
 int cent_threshold = 20;
 bool paused = false;
@@ -39,8 +43,9 @@ const char *note_name[2][12] = {
 
 class StringBoard {
 public:
-  StringBoard(WINDOW *display, int x, int y)
-    : kStrings(4), kStringSpace(16), kHalftoneSpace(4), // constants for now.
+  StringBoard(WINDOW *display, int x, int y, int string_space,
+              int halftone_space)
+    : kStrings(4), kStringSpace(string_space), kHalftoneSpace(halftone_space),
       display_(display), origin_x_(x), origin_y_(y) {
   }
   
@@ -268,7 +273,7 @@ static void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   }
   werase(display);
   int total_scored = 0, total_in_tune = 0;
-  StringBoard board(display, kStartX, kStartY);
+  StringBoard board(display, kStartX, kStartY, kStringSpace, kHalftoneSpace);
   board.PrintStringBoard();
   print_percent_per_cutoff(display, 0, 0, require_min_count, 19);
 
@@ -305,7 +310,7 @@ static void print_freq(double f, int max_value,
   werase(flat);
   werase(sharp);
 
-  StringBoard board(display, kStartX, kStartY);
+  StringBoard board(display, kStartX, kStartY, kStringSpace, kHalftoneSpace);
   board.PrintStringBoard();
 
   if (max_value > 0) {
@@ -477,6 +482,8 @@ int main (int argc, char *argv[]) {
   double last_keypress_time = -1;
   bool do_exit = false;
   while (!do_exit) {
+    kStringSpace = COLS / 8;
+    kHalftoneSpace = LINES / 8;
     if ((err = snd_pcm_readi (capture_handle, read_buf,
                               small_sample)) != small_sample) {
       fprintf (stderr, "read from audio interface failed (%s)\n",
