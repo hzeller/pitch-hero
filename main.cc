@@ -310,6 +310,8 @@ static void print_freq(double f, int max_value,
   werase(flat);
   werase(sharp);
 
+  show_menu(display, LINES - 13);
+
   StringBoard board(display, kStartX, kStartY, kStringSpace, kHalftoneSpace);
   board.PrintStringBoard();
 
@@ -356,13 +358,13 @@ static void print_freq(double f, int max_value,
 
   bool in_tune = true;
   if (cent < - cent_threshold) {
-    wbkgd(flat, COLOR_PAIR(COL_WARN));
+    if (kSeizureMode) wbkgd(flat, COLOR_PAIR(COL_WARN));
     wbkgd(sharp, COLOR_PAIR(COL_NEUTRAL));
     in_tune = false;
   }
   else if (cent > cent_threshold) {
     wbkgd(flat, COLOR_PAIR(COL_NEUTRAL));
-    wbkgd(sharp, COLOR_PAIR(COL_WARN));
+    if (kSeizureMode) wbkgd(sharp, COLOR_PAIR(COL_WARN));
     in_tune = false;
   }
   sStatCounter.Count(scale_above_C, cent);
@@ -480,6 +482,7 @@ int main (int argc, char *argv[]) {
   double *analyze_buf = new double [ sample_count ];
   bool any_change = true;
   double last_keypress_time = -1;
+  double last_minloud_time = -1;
   bool do_exit = false;
   while (!do_exit) {
     kStringSpace = COLS / 8;
@@ -540,14 +543,23 @@ int main (int argc, char *argv[]) {
 
     // No value 'heard', show statistics. Also, if we just pressed a key,
     // that might have created some noise we picked up; ignore that.
-    if (paused || max_val < 2000 ||
-        (last_keypress_time > 0 && last_keypress_time + 0.5 > GetTime())) {
+    const double now = GetTime();
+    const bool min_loud = (max_val > 2000);
+    if (min_loud) {
+      last_minloud_time = now;
+    }
+    if (paused
+        || (last_minloud_time + 1.0 < now)  // at least silent time
+        || (last_keypress_time > 0 && last_keypress_time + 0.5 > now)) {
       if (any_change) {
         print_stats(display, flat_pitch, sharp_pitch);
       }
       any_change = false;
     } else {
-      double freq = dywapitch_computepitch(&tracker, analyze_buf);
+      double freq = 0.0;
+      if (min_loud) {
+        freq = dywapitch_computepitch(&tracker, analyze_buf);
+      }
       print_freq(freq, max_val, display, flat_pitch, sharp_pitch);
       any_change = true;
     }
