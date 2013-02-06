@@ -16,6 +16,7 @@
 static const int kSeizureMode = false;   // :) show when we're off
 static const int kMaxNotesAboveC = 35;
 
+static const int kPitchDisplay = 1; // size of the flat/sharp bars top/bottom.
 static int kStringSpace = 16;   // horizontal space between strings
 static int kHalftoneSpace = 4;  // vertical space between halftones
 
@@ -275,7 +276,7 @@ static void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
   int total_scored = 0, total_in_tune = 0;
   StringBoard board(display, kStartX, kStartY, kStringSpace, kHalftoneSpace);
   board.PrintStringBoard();
-  print_percent_per_cutoff(display, 0, 0, require_min_count, 19);
+  print_percent_per_cutoff(display, 0, 3, require_min_count, 19);
 
   for (int note = 0; note < sStatCounter.size(); ++note) {
     StatCounter::Counter counter = sStatCounter.get_stat_for(note,
@@ -295,7 +296,7 @@ static void print_stats(WINDOW *display, WINDOW *flat, WINDOW *sharp) {
                         counter.flat, counter.ok, counter.sharp);
   }
 
-  show_menu(display, LINES - 13);
+  show_menu(display, LINES - 8 - 2 * kPitchDisplay);
   wrefresh(display);
 }
 
@@ -310,7 +311,7 @@ static void print_freq(double f, int max_value,
   werase(flat);
   werase(sharp);
 
-  show_menu(display, LINES - 13);
+  show_menu(display, LINES - 8 - 2 * kPitchDisplay);
 
   StringBoard board(display, kStartX, kStartY, kStringSpace, kHalftoneSpace);
   board.PrintStringBoard();
@@ -464,7 +465,6 @@ int main (int argc, char *argv[]) {
   init_pair(COL_VU_METER, COLOR_WHITE, COLOR_BLUE);
   init_pair(COL_HEADLINE, COLOR_BLACK, COLOR_WHITE);
 
-  const int kPitchDisplay = 3;
   WINDOW *flat_pitch = newwin(kPitchDisplay, COLS, 0, 0);
   WINDOW *sharp_pitch = newwin(kPitchDisplay, COLS,
                                       LINES - kPitchDisplay, 0);
