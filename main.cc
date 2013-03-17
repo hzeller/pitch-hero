@@ -16,6 +16,8 @@
 static const int kSeizureMode = false;   // :) show when we're off
 static const int kMaxNotesAboveC = 35;
 
+static const double kPitchA = 440.0; // Hz.
+
 static const int kPitchDisplay = 1; // size of the flat/sharp bars top/bottom.
 static int kStringSpace = 16;   // horizontal space between strings
 static int kHalftoneSpace = 4;  // vertical space between halftones
@@ -331,7 +333,7 @@ static void print_freq(double f, int max_value,
   if (f == 0.0)
     return;   // nothing detected.
 
-  static const double base = 55.0;  // 440 / 2 / 2 = low A
+  static const double base = kPitchA / 4; // 440 / 4 = low A
   static const double d = exp(log(2) / 1200);
   const double cent_above_base = log(f / base) / log(d);
   const int scale_above_C = round(cent_above_base / 100.0) - 3;
