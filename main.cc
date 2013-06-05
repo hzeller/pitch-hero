@@ -333,7 +333,7 @@ static void print_freq(double f, int max_value,
   if (f == 0.0)
     return;   // nothing detected.
 
-  static const double base = kPitchA / 4; // 440 / 4 = low A
+  static const double base = kPitchA / 8; // The A just below our C string.
   static const double d = exp(log(2) / 1200);
   const double cent_above_base = log(f / base) / log(d);
   const int scale_above_C = round(cent_above_base / 100.0) - 3;
