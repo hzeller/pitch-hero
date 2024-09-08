@@ -154,7 +154,7 @@ public:
     ++histogram_[note].histogram[index];
   }
 
-  const int size() const { return note_count_; }
+  int size() const { return note_count_; }
   Counter get_stat_for(int note, int threshold) const {
     Counter result;
     if (note < 0 || note >= note_count_) return result;
